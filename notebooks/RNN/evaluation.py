@@ -49,6 +49,6 @@ def evaluate(model, test_loader, scaler, criterion=nn.MSELoss()):
     eval_metrics = {}
     eval_metrics['eval_loss'] = sum(eval_loss_list)/len(eval_loss_list)
     eval_metrics['eval_price_loss'] = sum(price_loss_list)/len(price_loss_list)
-    eval_metrics['eval_MEA'] = mae
+    eval_metrics['eval_MAE'] = mae
 
     return eval_metrics
