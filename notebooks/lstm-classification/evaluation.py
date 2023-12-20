@@ -5,14 +5,36 @@ from sklearn import metrics
 from tqdm import tqdm
 
 
-def evaluate(model, test_loader, scaler, criterion=nn.MSELoss()):
+def get_binary_metric(labels_list, pred_list, prob_list, train_or_eval="eval"):
+
+    accuracy = metrics.accuracy_score(labels_list, pred_list)
+    recall = metrics.recall_score(labels_list, pred_list)
+    precision = metrics.precision_score(labels_list, pred_list)
+    f1 = metrics.f1_score(labels_list, pred_list)
+    fpr, tpr, _ = metrics.roc_curve(
+        labels_list, prob_list, pos_label=1)
+
+    auc = metrics.auc(fpr, tpr)
+
+    result = {f"{train_or_eval}_accuracy": accuracy,
+              f"{train_or_eval}_recall": recall,
+              f"{train_or_eval}_precision": precision,
+              f"{train_or_eval}_recall": recall,
+              f"{train_or_eval}_f1": f1,
+              f'{train_or_eval}_auc': auc}
+
+    return result
+
+
+def evaluate(model, test_loader, criterion, train_or_eval="eval"):
 
     model.eval()
 
-    prediction_list = []
-    ground_truth_list = []
-    eval_loss_list = []
-    price_loss_list = []
+    model.eval()
+    loss_list = []
+    labels_list = []
+    pred_list = []
+    prob_list = []
 
     pbar = tqdm(total=len(test_loader),
                 desc="Evaluating:", position=0, leave=True)
@@ -21,34 +43,26 @@ def evaluate(model, test_loader, scaler, criterion=nn.MSELoss()):
         for inputs, targets in test_loader:
             outputs = model(inputs)
             loss = criterion(outputs, targets)
+            loss_list.append(loss.item())
 
-            price_loss = criterion(outputs[:, -1], targets[:, -1])
+            yhat = torch.argmax(outputs, 1).cpu().numpy()
+            pred_list.extend(yhat)
 
-            yhat = outputs[:, -1].cpu().numpy()
-            prediction_list.append(yhat)
+            y = targets.cpu().numpy()
+            labels_list.extend(y)
 
-            y = targets[:, -1].cpu().numpy()
-            ground_truth_list.append(y)
-
-            eval_loss_list.append(loss.item())
-            price_loss_list.append(price_loss.item())
+            prob = torch.sigmoid(outputs[:, 1])
+            prob = prob.cpu().numpy()
+            prob_list.extend(prob)
 
             pbar.update(1)
         pbar.close()
 
-    predictions = np.concatenate(prediction_list)
-    ground_truths = np.concatenate(ground_truth_list)
+    loss = np.mean(loss_list)
 
-    predictions = np.exp(scaler.inverse_transform(
-        predictions.reshape(-1, 1)))[:, 0]
-    ground_truths = np.exp(scaler.inverse_transform(
-        ground_truths.reshape(-1, 1)))[:, 0]
+    metrics_results = get_binary_metric(
+        labels_list, pred_list, prob_list, train_or_eval)
 
-    mae = metrics.mean_absolute_error(ground_truths, predictions)
+    metrics_results[f"{train_or_eval}_loss"] = loss
 
-    eval_metrics = {}
-    eval_metrics['eval_loss'] = sum(eval_loss_list)/len(eval_loss_list)
-    eval_metrics['eval_price_loss'] = sum(price_loss_list)/len(price_loss_list)
-    eval_metrics['eval_MAE'] = mae
-
-    return eval_metrics
+    return metrics_results, labels_list, pred_list, prob_list
